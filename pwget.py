@@ -25,26 +25,6 @@ def url_to_localpath(u):
         res += '#{0}'.format(u.fragment)
     return res
 
-def save_local(response, parsed_url):
-    localpath = url_to_localpath(parsed_url)
-    print('save_local:',localpath)
-    (localdir, localfile) = os.path.split(localpath)
-    if not localfile:
-        localfile = '_root_'
-
-    new_localpath = os.path.join(localdir, localfile)
-    xmkdir(localdir)
-    if os.path.exists(new_localpath):
-        logging.warn('{0} exists, won\'t overwrite'.format(new_localpath))
-        return
-
-    with io.open(new_localpath, 'wb') as fd:
-        while True:
-            s = response.read(8192)
-            if s:
-                fd.write(s)
-            else:
-                return
 
 def normalize(url):
     x = urllib.parse.urlsplit(url)
@@ -75,6 +55,36 @@ class Crawler(object):
         self.tocrawl = set(urls)
         self.urlre = re.compile(urlre) if urlre else None
         self.crawled = set([])
+
+    @staticmethod
+    def save_local(url, response, parsed_url, verbose=None):
+        localpath = url_to_localpath(parsed_url)
+        print('save_local:',localpath)
+        (localdir, localfile) = os.path.split(localpath)
+        if not localfile:
+            localfile = '_root_'
+
+        new_localpath = os.path.join(localdir, localfile)
+        xmkdir(localdir)
+        if os.path.exists(new_localpath):
+            logging.warn('{0} exists, won\'t overwrite'.format(new_localpath))
+            return
+
+        if verbose:
+            print()
+
+        with io.open(new_localpath, 'wb') as fd:
+            total = 0
+            while True:
+                s = response.read(8192)
+                if verbose:
+                    total += len(s)
+                    sys.stdout.write('\r')
+                    sys.stdout.write('{0} bytes read from {1}'.format(total, url))
+                if s:
+                    fd.write(s)
+                else:
+                    return
 
     @staticmethod
     def get_links(parsed_url, content):
@@ -139,11 +149,11 @@ class Crawler(object):
                     logging.error('Failed decoding "{0}" with charset "{1}": {2}'.format(current_url, encoding, str(e)))
                     pass
 
-                save_local(io.BytesIO(content), parsed_url)
+                Crawler.save_local(current_url, io.BytesIO(content), parsed_url, verbose)
 
             else:
-                print('Saving {0} to disk'.format(parsed_url))
-                save_local(response, parsed_url)
+                print('Saving {0} to disk'.format(current_url))
+                Crawler.save_local(current_url, response, parsed_url, verbose)
                 self.crawled.add(normalize(current_url))
 
 def usage():
