@@ -17,7 +17,13 @@ import getopt
 import os
 
 def url_to_localpath(u):
-    return os.path.join(u.netloc,u.path[1:])
+    res = os.path.join(u.netloc,u.path[1:])
+    if u.query:
+        res += '?{0}'.format(u.query)
+
+    if u.fragment:
+        res += '#{0}'.format(u.fragment)
+    return res
 
 def save_local(response, parsed_url):
     localpath = url_to_localpath(parsed_url)
@@ -90,7 +96,7 @@ class Crawler(object):
                 pass
         return res
 
-    def __call__(self):
+    def __call__(self, verbose=False):
         while True:
             try:
                 current_url = self.tocrawl.pop()
@@ -103,6 +109,8 @@ class Crawler(object):
             try:
                 print('GET {0}'.format(current_url))
                 response = urllib.request.urlopen(current_url)
+            except KeyboardInterrupt:
+                raise
             except:
                 logging.error('urlopen failed: {0}'.format(current_url))
                 continue
@@ -117,8 +125,6 @@ class Crawler(object):
                 content = response.read()
                 self.crawled.add(normalize(current_url))
                 try:
-                    print(type(content))
-                    print(type(encoding))
                     links = Crawler.get_links(parsed_url, content.decode(encoding))
                     for link in links:
                         link = normalize(link)
@@ -127,7 +133,8 @@ class Crawler(object):
                                 print('Recursing link {0}'.format(link))
                                 self.tocrawl.add(normalize(link))
                             else:
-                                print('Not recursing link {0}'.format(link))
+                                if verbose:
+                                    print('Not recursing link {0}'.format(link))
                 except UnicodeDecodeError as e:
                     logging.error('Failed decoding "{0}" with charset "{1}": {2}'.format(current_url, encoding, str(e)))
                     pass
@@ -143,10 +150,13 @@ def usage():
     print('Recursively downloads from http urls matching a regexp:\n')
     print('{0} [-r url_regexp] url1 [url2] ... [urln]'.format(sys.argv[0]))
     print()
+    print('''Options:
+    -v:         verbose execution
+    -h:         this help''')
 
 def main():
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "hr:", ["help", "regex="])
+        opts, args = getopt.getopt(sys.argv[1:], "vhr:", ["help", "regex="])
     except getopt.GetoptError as err:
         print(err)
         usage()
@@ -156,6 +166,9 @@ def main():
     for o, a in opts:
         if o in ("-r", "--regex"):
             options['regex'] = a
+
+        elif o == '-v':
+            options['verbose'] = True
 
         elif o in ("-h", "--help"):
             usage()
@@ -169,7 +182,7 @@ def main():
         return(1)
 
     c = Crawler(args, options.get('regex',None))
-    c()
+    c(verbose=options.get('verbose',False))
 
 if __name__ == '__main__':
     sys.exit(main())
