@@ -16,6 +16,17 @@ import io
 import getopt
 import os
 
+
+def usage():
+    print('Recursively downloads from http urls matching a regexp:\n')
+    print('{0} [-r url_regexp] url1 [url2] ... [urln]'.format(sys.argv[0]))
+    print()
+    print('''Options:
+    -v:         verbose execution
+    -h:         this help''')
+
+
+
 def url_to_localpath(u):
     res = os.path.join(u.netloc,u.path[1:])
     if u.query:
@@ -155,15 +166,6 @@ class Crawler(object):
                 print('Saving {0} to disk'.format(current_url))
                 Crawler.save_local(current_url, response, parsed_url, verbose)
                 self.crawled.add(normalize(current_url))
-
-def usage():
-    print('Recursively downloads from http urls matching a regexp:\n')
-    print('{0} [-r url_regexp] url1 [url2] ... [urln]'.format(sys.argv[0]))
-    print()
-    print('''Options:
-    -v:         verbose execution
-    -h:         this help''')
-
 def main():
     try:
         opts, args = getopt.getopt(sys.argv[1:], "vhr:", ["help", "regex="])
