@@ -1,0 +1,1 @@
+- Normalize paths in link to remove double slashes and /./  /a/../b etc.
