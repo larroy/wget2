@@ -111,7 +111,7 @@ class Crawler(object):
             elif link.startswith('http://'):
                 res.append(link)
             elif not re.match('^\w+://', link):
-                link = parsed_url.scheme + '://' + parsed_url.netloc + '/' + link
+                link = parsed_url.scheme + '://' + parsed_url.netloc + parsed_url.path + link
                 res.append(link)
             else:
                 pass
