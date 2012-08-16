@@ -15,6 +15,8 @@ import logging
 import io
 import getopt
 import os
+import datetime
+import http
 
 
 def usage():
@@ -25,6 +27,107 @@ def usage():
     -v:         verbose execution
     -h:         this help''')
 
+def est_finish(started, done, total):
+    '''Return a datetime object estimating date of finishing. @param started is a datetime object when the job started, @param done is the number of currently done elements and @total is the remaining elements to do work on.'''
+    if not total or total <= 0 or done <= 0:
+        return datetime.datetime.now()
+    delta = datetime.datetime.now() - started
+    remaining = (delta.total_seconds() * total) / done
+    res = datetime.datetime.now() + datetime.timedelta(seconds=remaining)
+    return res.strftime('%Y-%m-%d %H:%M')
+
+def getTerminalSize():
+    '''returns terminal size as a tuple (x,y)'''
+    def ioctl_GWINSZ(fd):
+        try:
+            import fcntl, termios, struct
+            cr = struct.unpack('hh', fcntl.ioctl(fd, termios.TIOCGWINSZ,
+        '1234'))
+        except:
+            return None
+        return cr
+    cr = ioctl_GWINSZ(0) or ioctl_GWINSZ(1) or ioctl_GWINSZ(2)
+    if not cr:
+        try:
+            fd = os.open(os.ctermid(), os.O_RDONLY)
+            cr = ioctl_GWINSZ(fd)
+            os.close(fd)
+        except:
+            pass
+    if not cr:
+        cr = (25, 80)
+    return int(cr[1]), int(cr[0])
+
+
+
+class ProgressBar:
+    def __init__(self, minValue = 0, maxValue = 10, totalWidth=getTerminalSize()[0]):
+        self.progBar = "[]"   # This holds the progress bar string
+        self.min = int(minValue)
+        self.max = int(maxValue)
+        self.span = self.max - self.min
+        self.width = totalWidth
+        self.done = 0
+        self.percentDone_last = -1
+        self.percentDone = 0
+        self.updateAmount(0)  # Build progress bar string
+        self.lastMsg = ''
+
+    def updateAmount(self, done = 0, msg=''):
+        if done < self.min:
+            done = self.min
+
+        if done > self.max:
+            done = self.max
+
+        self.done = done
+
+        if self.span == 0:
+            self.percentDone = 100
+        else:
+            self.percentDone = int(((self.done - self.min) * 100) / self.span)
+
+        if self.percentDone == self.percentDone_last and self.lastMsg == msg:
+            return False
+        else:
+            self.percentDone_last = self.percentDone
+
+        # Figure out how many hash bars the percentage should be
+        allFull = self.width - 2
+        numHashes = (self.percentDone / 100.0) * allFull
+        numHashes = int(round(numHashes))
+
+        # build a progress bar with hashes and spaces
+        self.progBar = "[" + '#'*numHashes + ' '*(allFull-numHashes) + "]"
+
+        # figure out where to put the percentage, roughly centered
+        if not msg:
+            percentString = str(self.percentDone) + "%"
+        else:
+            percentString = str(self.percentDone) + "%" + ' ' + msg
+
+        percentString = '{0}% {1}'.format(str(self.percentDone),msg)
+
+        percentPlace = len(self.progBar)//2 - len(percentString)//2
+        if percentPlace < 0:
+            percentPlace = 0
+
+        # slice the percentage into the bar
+        self.progBar = self.progBar[0:percentPlace] + percentString[:allFull] + self.progBar[percentPlace+len(percentString):]
+        return True
+
+    def __call__(self, amt, msg='', force=False):
+        if self.updateAmount(amt, msg):
+            sys.stdout.write(str(self))
+            if sys.stdout.isatty():
+                sys.stdout.write("\r")
+            else:
+                sys.stdout.write("\n")
+            sys.stdout.flush()
+
+
+    def __str__(self):
+        return str(self.progBar)
 
 
 def url_to_localpath(u):
@@ -40,6 +143,16 @@ def url_to_localpath(u):
 def normalize(url):
     x = urllib.parse.urlsplit(url)
     return urllib.parse.urlunparse((x[0],x[1].lower(),x[2],'', x[3],x[4]))
+
+def humansize(nbytes):
+    if nbytes:
+        nbytes = int(nbytes)
+        p = [('Ti', 40), ('Gi', 30), ('Mi', 20), ('Ki', 10), ('B', 0)]
+        for (pk,pv) in p:
+            if nbytes > (1<<pv):
+                return '{0} {1}'.format(nbytes // (1<<pv), pk)
+        return '0 B'
+    return nbytes
 
 
 def xmkdir(d):
@@ -60,20 +173,22 @@ def xmkdir(d):
 
 
 class Crawler(object):
+    ROOTFILENAME = '_root_'
 
     linkregex = re.compile('<a\s(?:.*?\s)*?href=[\'"](.*?)[\'"].*?>')
-    def __init__(self, urls, urlre):
+    def __init__(self, urls, urlre, verbose=False):
         self.tocrawl = set(urls)
         self.urlre = re.compile(urlre) if urlre else None
         self.crawled = set([])
+        self.verbose = verbose
 
     @staticmethod
     def save_local(url, response, parsed_url, verbose=None):
         localpath = url_to_localpath(parsed_url)
-        print('save_local:',localpath)
+        print('Destination:',localpath)
         (localdir, localfile) = os.path.split(localpath)
         if not localfile:
-            localfile = '_root_'
+            localfile = Crawler.ROOTFILENAME
 
         new_localpath = os.path.join(localdir, localfile)
         xmkdir(localdir)
@@ -81,20 +196,32 @@ class Crawler(object):
             logging.warn('{0} exists, won\'t overwrite'.format(new_localpath))
             return
 
-        if verbose:
-            print()
+        length = response.getheader('content-length') if isinstance(response, http.client.HTTPResponse) else None
+        pb = None
+        start = None
+
+        #if verbose:
+        print()
+        if length:
+            length = int(length)
+            pb = ProgressBar(0, length)
+            start = datetime.datetime.now()
 
         with io.open(new_localpath, 'wb') as fd:
             total = 0
             while True:
                 s = response.read(8192)
-                if verbose:
-                    total += len(s)
+
+                total += len(s)
+                if pb:
+                    pb(total, humansize(total) + ' ETA: ' + est_finish(start, total, length))
+                elif verbose:
                     sys.stdout.write('\r')
-                    sys.stdout.write('{0} bytes read from {1}'.format(total, url))
+                    sys.stdout.write('{0} bytes read'.format(total))
                 if s:
                     fd.write(s)
                 else:
+                    print('{0} saved'.format(localfile))
                     return
 
     @staticmethod
@@ -117,7 +244,18 @@ class Crawler(object):
                 pass
         return res
 
-    def __call__(self, verbose=False):
+    def process_links(self, links):
+        for link in links:
+            link = normalize(link)
+            if link not in self.crawled:
+                if self.urlre and self.urlre.match(link):
+                    print('Recursing link {0}'.format(link))
+                    self.tocrawl.add(normalize(link))
+                else:
+                    if self.verbose:
+                        print('Not recursing link {0}'.format(link))
+
+    def __call__(self):
         while True:
             try:
                 current_url = self.tocrawl.pop()
@@ -128,12 +266,17 @@ class Crawler(object):
 
             parsed_url = urllib.parse.urlparse(current_url)
             try:
+                print()
                 print('GET {0}'.format(current_url))
                 response = urllib.request.urlopen(current_url)
+                length = response.getheader('content-length')
+                print('-> ', response.getcode(), response.getheader('Content-Type'), humansize(length))
+                print()
+
             except KeyboardInterrupt:
                 raise
-            except:
-                logging.error('urlopen failed: {0}'.format(current_url))
+            except RuntimeError as e:
+                logging.error('urlopen failed: {0}, {1}'.format(current_url, e))
                 continue
 
             headers = dict(response.getheaders())
@@ -147,24 +290,16 @@ class Crawler(object):
                 self.crawled.add(normalize(current_url))
                 try:
                     links = Crawler.get_links(parsed_url, content.decode(encoding))
-                    for link in links:
-                        link = normalize(link)
-                        if link not in self.crawled:
-                            if self.urlre and self.urlre.match(link):
-                                print('Recursing link {0}'.format(link))
-                                self.tocrawl.add(normalize(link))
-                            else:
-                                if verbose:
-                                    print('Not recursing link {0}'.format(link))
+                    self.process_links(links)
+
                 except UnicodeDecodeError as e:
                     logging.error('Failed decoding "{0}" with charset "{1}": {2}'.format(current_url, encoding, str(e)))
                     pass
 
-                Crawler.save_local(current_url, io.BytesIO(content), parsed_url, verbose)
+                Crawler.save_local(current_url, io.BytesIO(content), parsed_url, self.verbose)
 
             else:
-                print('Saving {0} to disk'.format(current_url))
-                Crawler.save_local(current_url, response, parsed_url, verbose)
+                Crawler.save_local(current_url, response, parsed_url, self.verbose)
                 self.crawled.add(normalize(current_url))
 def main():
     try:
@@ -193,8 +328,8 @@ def main():
         usage()
         return(1)
 
-    c = Crawler(args, options.get('regex',None))
-    c(verbose=options.get('verbose',False))
+    crawler = Crawler(args, options.get('regex',None), verbose=options.get('verbose',False))
+    crawler()
 
 if __name__ == '__main__':
     sys.exit(main())
