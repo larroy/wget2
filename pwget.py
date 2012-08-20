@@ -147,13 +147,36 @@ def normalize(url):
 def humansize(nbytes):
     if nbytes:
         nbytes = int(nbytes)
-        p = [('Ti', 40), ('Gi', 30), ('Mi', 20), ('Ki', 10), ('B', 0)]
+        p = [('TiB', 40), ('GiB', 30), ('MiB', 20), ('KiB', 10), ('B', 0)]
         for (pk,pv) in p:
             if nbytes > (1<<pv):
-                return '{0} {1}'.format(nbytes // (1<<pv), pk)
+                return '{0:.1f} {1}'.format(nbytes / (1<<pv), pk)
         return '0 B'
     return nbytes
 
+class Rate(object):
+    def __init__(self, min_delta_t = 1):
+        self.nbytes_last = 0
+        self.min_delta_t = min_delta_t
+        self.tprev = None
+        self.prev_rate = ' - '
+        pass
+
+    def __call__(self, nbytes):
+        if not self.tprev:
+            self.tprev = datetime.datetime.now()
+            self.nbytes_last = nbytes
+            return self.prev_rate
+
+        delta_t = (datetime.datetime.now() - self.tprev).total_seconds()
+
+        if delta_t > self.min_delta_t:
+            delta_b = nbytes - self.nbytes_last
+            rate = delta_b / delta_t
+            self.prev_rate = humansize(rate) + '/s'
+            self.tprev = datetime.datetime.now()
+
+        return self.prev_rate
 
 def xmkdir(d):
     rev_path_list = list()
@@ -207,6 +230,7 @@ class Crawler(object):
             pb = ProgressBar(0, length)
             start = datetime.datetime.now()
 
+        rate = Rate()
         with io.open(new_localpath, 'wb') as fd:
             total = 0
             while True:
@@ -214,7 +238,7 @@ class Crawler(object):
 
                 total += len(s)
                 if pb:
-                    pb(total, humansize(total) + ' ETA: ' + est_finish(start, total, length))
+                    pb(total, humansize(total) + ' @ ' + rate(total) + ' ETA: ' + est_finish(start, total, length))
                 elif verbose:
                     sys.stdout.write('\r')
                     sys.stdout.write('{0} bytes read'.format(total))
