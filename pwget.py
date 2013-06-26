@@ -194,16 +194,36 @@ def xmkdir(d):
                 raise
 
 
+def parse_cookie_file(content):
+    """returns a dict of tuples of domain => cookie => value"""
+    host_cookies = dict()
+    for line in content.split(os.linesep):
+        line = line
+        if not re.match("^#", line):
+            fields = line.split("\t")
+            cookie = host_cookies.get(fields[0], {})
+            cookie[fields[5]] = fields[6]
+            host_cookies[fields[0]] = cookie
+    return host_cookies
+
 
 class Crawler(object):
     ROOTFILENAME = '_root_'
 
     linkregex = re.compile('<a\s(?:.*?\s)*?href=[\'"](.*?)[\'"].*?>')
-    def __init__(self, urls, urlre, verbose=False):
+    def __init__(self, urls, urlre, **kvargs):
         self.tocrawl = set(urls)
         self.urlre = re.compile(urlre) if urlre else None
         self.crawled = set([])
-        self.verbose = verbose
+        self.verbose = kvargs.get('verbose', None)
+        self.cookiefile = kvargs.get('cookiefile', None)
+        self.host_cookies = None
+        if self.cookiefile:
+            if os.path.isfile(self.cookiefile):
+                self.host_cookies = parse_cookie_file(open(self.cookiefile, "rb").read())
+            else:
+                raise RuntimeError("Crawler error: cookie file {0} not found", self.cookiefile)
+
 
     @staticmethod
     def save_local(url, response, parsed_url, verbose=None):
@@ -279,6 +299,25 @@ class Crawler(object):
                     if self.verbose:
                         print('Not recursing link {0}'.format(link))
 
+
+    @staticmethod
+    def add_cookies(url_opener, parsed_url, host_cookies):
+        if not host_cookies:
+            return
+
+        assert(instance(parsed_url, urllib.parse.ParseResult))
+        url_host = parsed_url.netloc
+        url_host = url_host[:url_host.rfind(':')] # remove port
+        # FIXME so far ignoring the port on the cookie file
+        for (host, cookies) in host_cookies.items():
+            host = host[:host.rfind(':')]
+            if url_host.endswith(host):
+                for (k, v) in cookies.items():
+                    url_opener.add_header(k, v)
+
+
+
+
     def __call__(self):
         while True:
             try:
@@ -292,7 +331,10 @@ class Crawler(object):
             try:
                 print()
                 print('GET {0}'.format(current_url))
-                response = urllib.request.urlopen(current_url)
+                request = urllib.request.Request(url = current_url)
+                Crawler.add_cookies(request, parsed_url, self.host_cookies)
+                response = urllib.request.urlopen(request)
+
                 length = response.getheader('content-length')
                 print('-> ', response.getcode(), response.getheader('Content-Type'), humansize(length))
                 print()
