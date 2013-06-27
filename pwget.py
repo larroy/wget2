@@ -358,7 +358,10 @@ class Crawler(object):
                 print('GET {0}'.format(current_url))
                 request = urllib.request.Request(url = current_url)
                 self.add_cookies(request, parsed_url, self.host_cookies)
-                response = urllib.request.urlopen(request)
+                try:
+                    response = urllib.request.urlopen(request)
+                except urllib.error.HTTPError as e:
+                    sys.stderr.write("urlopen error: {0}\n".format(e))
 
                 length = response.getheader('content-length')
                 print('-> ', response.getcode(), response.getheader('Content-Type'), humansize(length))
