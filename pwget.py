@@ -201,20 +201,36 @@ def xmkdir(d):
 def parse_cookie_file(content):
     """returns a dict of tuples of domain => cookie => value"""
     host_cookies = dict()
-    for line in content.split(os.linesep):
-        line = line
-        if not re.match("^#", line):
-            fields = line.split("\t")
-            cookie = host_cookies.get(fields[0], {})
-            cookie[fields[5]] = fields[6]
-            host_cookies[fields[0]] = cookie
+    for line in content.decode().split(os.linesep):
+        line = line.rstrip()
+        if not re.match("^#", line) and line:
+            try:
+                fields = line.split("\t")
+                cookie = host_cookies.get(fields[0], {})
+                if len(fields) == 7:
+                    cookie[fields[5]] = fields[6]
+                else:
+                    cookie[fields[5]] = ''
+                host_cookies[fields[0]] = cookie
+            except IndexError:
+                sys.stderr.write("warning: ignoring cookiefile entry with insufficient fields: {0}".format(line))
     return host_cookies
 
+def without_port(netloc):
+    colon_pos = netloc.rfind(':')
+    if colon_pos > 0:
+        return netloc[:colon_pos]
+    return netloc
+
+def remove_first_dot(netloc):
+    if netloc[0] == '.':
+        return netloc[1:]
+    return netloc
 
 class Crawler(object):
     ROOTFILENAME = '_root_'
 
-    linkregex = re.compile('<a\s(?:.*?\s)*?href=[\'"](.*?)[\'"].*?>')
+    linkregex = re.compile('<a\s(?:.*?\s)*?href=[\'"](.*?)[\'"].*?>', re.IGNORECASE)
     def __init__(self, urls, **kvargs):
         self.tocrawl = set(urls)
         self.crawled = set([])
@@ -299,6 +315,8 @@ class Crawler(object):
         for link in links:
             link = normalize(link)
             if link not in self.crawled:
+                #if self.verbose:
+                #    print('Check {0}'.format(link))
                 if self.urlre and self.urlre.match(link):
                     print('Recursing link {0}'.format(link))
                     self.tocrawl.add(normalize(link))
@@ -307,22 +325,22 @@ class Crawler(object):
                         print('Not recursing link {0}'.format(link))
 
 
-    @staticmethod
-    def add_cookies(url_opener, parsed_url, host_cookies):
+    def add_cookies(self, url_opener, parsed_url, host_cookies):
         if not host_cookies:
             return
 
-        assert(instance(parsed_url, urllib.parse.ParseResult))
-        url_host = parsed_url.netloc
-        url_host = url_host[:url_host.rfind(':')] # remove port
+        assert(isinstance(parsed_url, urllib.parse.ParseResult))
+        url_host = without_port(parsed_url.netloc)
+
         # FIXME so far ignoring the port on the cookie file
         for (host, cookies) in host_cookies.items():
-            host = host[:host.rfind(':')]
-            if url_host.endswith(host):
+            host = without_port(host)
+            #print('url_host', url_host)
+            if url_host == host or url_host.endswith(remove_first_dot(host)):
                 for (k, v) in cookies.items():
-                    url_opener.add_header(k, v)
-
-
+                    if self.verbose:
+                        print('Using cookie "{0}: {1}" for host {2}'.format(k, v, url_host))
+                    url_opener.add_header('Cookie', '{0}={1}'.format(k,v))
 
 
     def __call__(self):
@@ -339,7 +357,7 @@ class Crawler(object):
                 print()
                 print('GET {0}'.format(current_url))
                 request = urllib.request.Request(url = current_url)
-                Crawler.add_cookies(request, parsed_url, self.host_cookies)
+                self.add_cookies(request, parsed_url, self.host_cookies)
                 response = urllib.request.urlopen(request)
 
                 length = response.getheader('content-length')
