@@ -18,7 +18,7 @@ class CrawlerTest(unittest.TestCase):
         self.assertFalse(os.path.isdir("google.com"))
 
     def test_simple(self):
-        crawler = pwget.Crawler(['http://google.com'], None)
+        crawler = pwget.Crawler(['http://google.com'])
         crawler()
         self.assertTrue(os.path.isdir("google.com"))
         self.assertTrue(os.path.isfile("google.com/_root_"))

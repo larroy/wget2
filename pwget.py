@@ -21,11 +21,15 @@ import http
 
 def usage():
     print('Recursively downloads from http urls matching a regexp:\n')
-    print('{0} [-r url_regexp] url1 [url2] ... [urln]'.format(sys.argv[0]))
+    print('{0} [-r url_regex] url1 [url2] ... [urln]'.format(sys.argv[0]))
     print()
     print('''Options:
-    -v:         verbose execution
-    -h:         this help''')
+    -v --verbose:       verbose execution
+    -h --help:          this help
+    -r --regex:         regex for urls to download
+    -c --cokiefile:     specify a cookie file to use
+    ''')
+
 
 def est_finish(started, done, total):
     '''Return a datetime object estimating date of finishing. @param started is a datetime object when the job started, @param done is the number of currently done elements and @total is the remaining elements to do work on.'''
@@ -211,12 +215,15 @@ class Crawler(object):
     ROOTFILENAME = '_root_'
 
     linkregex = re.compile('<a\s(?:.*?\s)*?href=[\'"](.*?)[\'"].*?>')
-    def __init__(self, urls, urlre, **kvargs):
+    def __init__(self, urls, **kvargs):
         self.tocrawl = set(urls)
-        self.urlre = re.compile(urlre) if urlre else None
         self.crawled = set([])
-        self.verbose = kvargs.get('verbose', None)
-        self.cookiefile = kvargs.get('cookiefile', None)
+
+        self.urlre = re.compile(kvargs['regex']) if kvargs.get('regex') else None
+
+        for i in ['regex', 'verbose', 'cookiefile']:
+            self.__setattr__(i, kvargs.get(i, None))
+
         self.host_cookies = None
         if self.cookiefile:
             if os.path.isfile(self.cookiefile):
@@ -369,7 +376,7 @@ class Crawler(object):
                 self.crawled.add(normalize(current_url))
 def main():
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "vhr:", ["help", "regex="])
+        opts, args = getopt.getopt(sys.argv[1:], "vhr:c:", ["help", "regex=", "cookiefile=", 'verbose'])
     except getopt.GetoptError as err:
         print(err)
         usage()
@@ -380,7 +387,10 @@ def main():
         if o in ("-r", "--regex"):
             options['regex'] = a
 
-        elif o == '-v':
+        elif o in ("-c", "--cookiefile"):
+            options['cookiefile'] = a
+
+        elif o in ('-v', '--verbose'):
             options['verbose'] = True
 
         elif o in ("-h", "--help"):
@@ -394,7 +404,7 @@ def main():
         usage()
         return(1)
 
-    crawler = Crawler(args, options.get('regex',None), verbose=options.get('verbose',False))
+    crawler = Crawler(args, **options)
     crawler()
 
 if __name__ == '__main__':
