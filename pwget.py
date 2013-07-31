@@ -427,6 +427,7 @@ def main():
 
     crawler = Crawler(args, **options)
     crawler()
+    return 0
 
 if __name__ == '__main__':
     sys.exit(main())
