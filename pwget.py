@@ -146,7 +146,7 @@ def url_to_localpath(u):
 
 def normalize(url):
     x = urllib.parse.urlsplit(url)
-    return urllib.parse.urlunparse((x[0],x[1].lower(),x[2],'', x[3],x[4]))
+    return urllib.parse.urlunparse((x[0], x[1].lower(), os.path.normpath(x[2]), '', x[3], x[4]))
 
 def humansize(nbytes):
     if nbytes:
