@@ -156,7 +156,7 @@ def humansize(nbytes):
             if nbytes > (1<<pv):
                 return '{0:.1f} {1}'.format(nbytes / (1<<pv), pk)
         return '0 B'
-    return nbytes
+    return str(nbytes)
 
 class Rate(object):
     def __init__(self, min_delta_t = 1):
