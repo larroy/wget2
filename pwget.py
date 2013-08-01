@@ -35,7 +35,8 @@ def est_finish(started, done, total):
     '''Return a datetime object estimating date of finishing. @param started is a datetime object when the job started, @param done is the number of currently done elements and @total is the remaining elements to do work on.'''
     fmt = '%Y-%m-%d %H:%M'
     if not total or total <= 0 or done <= 0:
-        return datetime.datetime.now().strftime(fmt)
+        #return datetime.datetime.now().strftime(fmt)
+        return ' -- '
     delta = datetime.datetime.now() - started
     remaining = (delta.total_seconds() * total) / done
     res = datetime.datetime.now() + datetime.timedelta(seconds=remaining)
