@@ -138,7 +138,7 @@ class ProgressBar:
 
 
 def url_to_localpath(u):
-    res = os.path.join(u.netloc,u.path[1:])
+    res = os.path.join(u.netloc, urllib.parse.unquote(u.path[1:]))
     if u.query:
         res += '?{0}'.format(u.query)
 
