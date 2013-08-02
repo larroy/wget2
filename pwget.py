@@ -5,7 +5,7 @@
 
 
 __author__ = 'Pedro Larroy'
-__version__ = '0.1'
+__version__ = '0.3'
 
 import sys
 import re
@@ -17,6 +17,7 @@ import getopt
 import os
 import datetime
 import http
+import time
 #import pdb
 
 
@@ -31,6 +32,7 @@ def usage():
     -c --cokiefile:     specify a cookie file to use
     -o --overwrite:     force overwritting of files
     -m --mirror:        only download if size differs
+    -t --time:          time to sleep between requests in seconds (float)
     ''')
 
 
@@ -444,7 +446,7 @@ class Crawler(object):
 
         self.urlre = re.compile(kvargs['regex']) if kvargs.get('regex') else None
 
-        for i in ['regex', 'verbose', 'cookiefile', 'mirror', 'overwrite']:
+        for i in ['regex', 'verbose', 'cookiefile', 'mirror', 'overwrite', 'time']:
             self.__setattr__(i, kvargs.get(i, None))
 
         self.host_cookies = None
@@ -560,6 +562,8 @@ class Crawler(object):
     def __call__(self):
         while True:
             try:
+                if self.time:
+                    time.sleep(self.time)
                 current_url = self.tocrawl.pop()
 
             except KeyError:
@@ -614,8 +618,8 @@ class Crawler(object):
 
 def main():
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "vhr:c:om",
-            ['help', 'regex=', 'cookiefile=', 'verbose', 'overwrite', 'mirror'])
+        opts, args = getopt.getopt(sys.argv[1:], "vhr:c:omt:",
+            ['help', 'regex=', 'cookiefile=', 'verbose', 'overwrite', 'mirror', 'time'])
     except getopt.GetoptError as err:
         print(err)
         usage()
@@ -637,6 +641,9 @@ def main():
 
         elif o in ('-o', '--overwrite'):
             options['overwrite'] = True
+
+        elif o in ('-t', '--time'):
+            options['time'] = float(a)
 
         elif o in ("-h", "--help"):
             usage()
