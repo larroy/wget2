@@ -11,6 +11,7 @@ import io
 
 import pwget
 import unittest
+import doctest
 
 
 class CrawlerTest(unittest.TestCase):
@@ -38,7 +39,11 @@ class NormalizeTest(unittest.TestCase):
         self.assertEqual(pwget.normalize('http://host/'), 'http://host/')
 
 
+def load_tests(loader, tests, ignore):
+    tests.addTests(doctest.DocTestSuite(pwget))
+    return tests
 
 if __name__ == '__main__':
     unittest.main()
+
 

@@ -456,7 +456,7 @@ class Crawler(object):
     @staticmethod
     def save_local(url, response, parsed_url, verbose=None):
         localpath = url_to_localpath(parsed_url)
-        print('Destination:',localpath)
+        #print('Destination:',localpath)
         (localdir, localfile) = os.path.split(localpath)
         if not localfile:
             localfile = Crawler.ROOTFILENAME
@@ -471,8 +471,6 @@ class Crawler(object):
         pb = None
         start = None
 
-        #if verbose:
-        print()
         if length:
             length = int(length)
             pb = ProgressBar(0, length)
@@ -493,7 +491,8 @@ class Crawler(object):
                 if s:
                     fd.write(s)
                 else:
-                    print('{0} saved'.format(localfile))
+                    if verbose:
+                        print('{0} saved'.format(localfile))
                     return
 
     @staticmethod
@@ -517,9 +516,8 @@ class Crawler(object):
 
     def recurse_links(self, links):
         '''Put links which are not crawled and match the url regexp in the tocrawl queue'''
-        print('recurse_links:',links)
         for link in links:
-            print(link)
+            #print(link)
             if link not in self.crawled:
                 #if self.verbose:
                 #    print('Check {0}'.format(link))
