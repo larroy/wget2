@@ -29,6 +29,8 @@ def usage():
     -h --help:          this help
     -r --regex:         regex for urls to download
     -c --cokiefile:     specify a cookie file to use
+    -o --overwrite:     force overwritting of files
+    -m --mirror:        only download if size differs
     ''')
 
 
@@ -442,7 +444,7 @@ class Crawler(object):
 
         self.urlre = re.compile(kvargs['regex']) if kvargs.get('regex') else None
 
-        for i in ['regex', 'verbose', 'cookiefile']:
+        for i in ['regex', 'verbose', 'cookiefile', 'mirror', 'overwrite']:
             self.__setattr__(i, kvargs.get(i, None))
 
         self.host_cookies = None
@@ -453,8 +455,7 @@ class Crawler(object):
                 raise RuntimeError("Crawler error: cookie file {0} not found", self.cookiefile)
 
 
-    @staticmethod
-    def save_local(url, response, parsed_url, verbose=None):
+    def save_local(self, url, response, parsed_url):
         localpath = url_to_localpath(parsed_url)
         #print('Destination:',localpath)
         (localdir, localfile) = os.path.split(localpath)
@@ -463,16 +464,22 @@ class Crawler(object):
 
         new_localpath = os.path.join(localdir, localfile)
         xmkdir(localdir)
-        if os.path.exists(new_localpath):
-            logging.warn('{0} exists, won\'t overwrite'.format(new_localpath))
-            return
 
         length = response.getheader('content-length') if isinstance(response, http.client.HTTPResponse) else None
         pb = None
         start = None
 
+        if not self.overwrite and not self.mirror and os.path.exists(new_localpath):
+            logging.warn('{0} exists, won\'t overwrite (use --mirror or --overwrite to change this)'.format(new_localpath))
+            return
+
         if length:
             length = int(length)
+            if self.mirror and os.path.exists(new_localpath)\
+                and os.stat(new_localpath).st_size == length:
+                logging.warn('{0}: remote and local have the same size'.format(new_localpath))
+                return
+
             pb = ProgressBar(0, length)
             start = datetime.datetime.now()
 
@@ -480,19 +487,22 @@ class Crawler(object):
         with io.open(new_localpath, 'wb') as fd:
             total = 0
             while True:
-                s = response.read(8192)
+                nread = response.read(8192)
 
-                total += len(s)
+                total += len(nread)
                 if pb:
                     pb(total, humansize(total) + ' @ ' + rate(total) + ' ETA: ' + est_finish(start, total, length))
-                elif verbose:
+                elif self.verbose:
                     sys.stdout.write('\r')
                     sys.stdout.write('{0} bytes read'.format(total))
-                if s:
-                    fd.write(s)
+
+                if nread:
+                    fd.write(nread)
+
                 else:
-                    if verbose:
+                    if self.verbose:
                         print('{0} saved'.format(localfile))
+
                     return
 
     @staticmethod
@@ -553,7 +563,7 @@ class Crawler(object):
                 current_url = self.tocrawl.pop()
 
             except KeyError:
-                print('All finished.')
+                print('All finished.\n')
                 return
 
             parsed_url = urllib.parse.urlparse(current_url)
@@ -562,19 +572,16 @@ class Crawler(object):
                 print('GET {0}'.format(current_url))
                 request = urllib.request.Request(url = current_url)
                 self.add_cookies(request, parsed_url, self.host_cookies)
-                try:
-                    response = urllib.request.urlopen(request)
-                except urllib.error.HTTPError as e:
-                    sys.stderr.write("urlopen error: {0}\n".format(e))
-
+                response = urllib.request.urlopen(request)
                 length = response.getheader('content-length')
                 print('-> ', response.getcode(), response.getheader('Content-Type'), humansize(length))
                 print()
 
             except KeyboardInterrupt:
                 raise
-            except RuntimeError as e:
+            except urllib.error.HTTPError as e:
                 logging.error('urlopen failed: {0}, {1}'.format(current_url, e))
+
                 continue
 
             headers = dict(response.getheaders())
@@ -599,15 +606,16 @@ class Crawler(object):
                     logging.error('Failed decoding "{0}" with charset "{1}": {2}'.format(current_url, encoding, str(e)))
                     pass
 
-                Crawler.save_local(current_url, io.BytesIO(content), parsed_url, self.verbose)
+                self.save_local(current_url, io.BytesIO(content), parsed_url)
 
             else:
                 self.crawled.add(current_url)
-                Crawler.save_local(current_url, response, parsed_url, self.verbose)
+                self.save_local(current_url, response, parsed_url)
 
 def main():
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "vhr:c:", ["help", "regex=", "cookiefile=", 'verbose'])
+        opts, args = getopt.getopt(sys.argv[1:], "vhr:c:om",
+            ['help', 'regex=', 'cookiefile=', 'verbose', 'overwrite', 'mirror'])
     except getopt.GetoptError as err:
         print(err)
         usage()
@@ -623,6 +631,12 @@ def main():
 
         elif o in ('-v', '--verbose'):
             options['verbose'] = True
+
+        elif o in ('-m', '--mirror'):
+            options['mirror'] = True
+
+        elif o in ('-o', '--overwrite'):
+            options['overwrite'] = True
 
         elif o in ("-h", "--help"):
             usage()
