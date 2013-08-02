@@ -17,6 +17,7 @@ import getopt
 import os
 import datetime
 import http
+#import pdb
 
 
 def usage():
@@ -146,9 +147,210 @@ def url_to_localpath(u):
     return res
 
 
+class Path:
+    '''
+    >>> p = Path('/ak/b'); p.slash_begin, p.segmt, p.slash_end
+    (True, ['ak', 'b'], False)
+    >>> p = Path('ak/b'); p.slash_begin, p.segmt, p.slash_end
+    (False, ['ak', 'b'], False)
+    >>> p = Path('ak/b/'); p.slash_begin, p.segmt, p.slash_end
+    (False, ['ak', 'b'], True)
+    >>> p = Path('//'); p.slash_begin, p.segmt, p.slash_end
+    (True, [], True)
+    >>> p = Path('///'); p.slash_begin, p.segmt, p.slash_end
+    (True, [], True)
+    >>> p = Path('a//b'); p.slash_begin, p.segmt, p.slash_end
+    (False, ['a', 'b'], False)
+    >>> p = Path('a//b'); p.slash_begin, p.segmt, p.slash_end
+    (False, ['a', 'b'], False)
+    >>> p = Path('a/../'); p.slash_begin, p.segmt, p.slash_end
+    (False, ['a', '..'], True)
+    >>> p = Path('a/../b'); p.slash_begin, p.segmt, p.slash_end
+    (False, ['a', '..', 'b'], False)
+    >>> p = Path('a/../b/'); p.slash_begin, p.segmt, p.slash_end
+    (False, ['a', '..', 'b'], True)
+    >>> p = Path('a/..//.//b//'); p.slash_begin, p.segmt, p.slash_end
+    (False, ['a', '..', '.', 'b'], True)
+    '''
+    def __init__(self, s):
+        self.segmt = list()
+        self.slash_begin = False
+        self.slash_end = False
+        self.sep = '/'
+        self.assign(s)
+
+    def assign(self, s):
+        sz = len(s)
+        if not sz:
+            return
+        store_beg_i = 0
+        store_end_i = 0
+        i = 0
+        prev_c = s[0]
+        #pdb.set_trace()
+        while i < sz:
+            c = s[i]
+            if i == 0 and c == self.sep:
+                self.slash_begin = True
+                store_beg_i = i + 1
+                store_end_i = i + 1
+
+            elif i == sz - 1:
+                if c == self.sep:
+                    self.slash_end = True
+                    store_end_i = i
+                else:
+                    store_end_i = sz
+
+                if store_end_i != store_beg_i:
+                    self.segmt.append(s[store_beg_i:store_end_i])
+
+            elif c == self.sep:
+                if prev_c != self.sep:
+                    store_end_i = i
+                    if store_end_i != store_beg_i:
+                        self.segmt.append(s[store_beg_i:store_end_i])
+                store_beg_i = i + 1
+                store_end_i = i + 1
+
+            else:
+                assert(c != self.sep and i != sz - 1)
+                if prev_c == self.sep:
+                    store_beg_i = i
+                    store_end_i = i
+
+            prev_c = c
+            i += 1
+
+    def normalize(self):
+        '''
+        >>> p = Path('a/..//.//b//'); p.normalize(); p.slash_begin, p.segmt, p.slash_end
+        (False, ['b'], True)
+        >>> p = Path('a/..//.//b'); p.normalize(); p.slash_begin, p.segmt, p.slash_end
+        (False, ['b'], False)
+        >>> p = Path('.'); p.normalize(); p.slash_begin, p.segmt, p.slash_end
+        (False, [], True)
+        >>> p = Path('..'); p.normalize(); p.slash_begin, p.segmt, p.slash_end
+        (False, ['..'], False)
+        >>> p = Path('../..'); p.normalize(); p.slash_begin, p.segmt, p.slash_end
+        (False, ['..', '..'], False)
+        >>> p = Path('../../.'); p.normalize(); p.slash_begin, p.segmt, p.slash_end
+        (False, ['..', '..'], True)
+        >>> p = Path('../.././..'); p.normalize(); p.slash_begin, p.segmt, p.slash_end
+        (False, ['..', '..', '..'], False)
+        >>> p = Path('../a/..'); p.normalize(); p.slash_begin, p.segmt, p.slash_end
+        (False, ['..'], True)
+        >>> p = Path('../a/../b/'); p.normalize(); p.slash_begin, p.segmt, p.slash_end
+        (False, ['..', 'b'], True)
+        '''
+        i = 0;
+        s = self.segmt
+        while i < len(s):
+            if s[i] == '..' and i - 1 >= 0 and s[i - 1] != '..' and  s[i - 1] != '.':
+                del s[i]
+                del s[i - 1]
+                i -= 1
+                if i == len(s):
+                    self.slash_end = True
+
+            elif s[i] == '.':
+                del s[i]
+                if i == len(s):
+                    self.slash_end = True
+
+            else:
+                i += 1
+
+    def absolute(self):
+        return self.slash_begin
+
+    def updir(self):
+        '''
+        >>> p = Path('a'); p.updir(); p.slash_begin, p.segmt, p.slash_end; print(p)
+        True
+        (False, [], False)
+        <BLANKLINE>
+        >>> p = Path('a/'); p.updir(); p.slash_begin, p.segmt, p.slash_end; print(p)
+        True
+        (False, [], False)
+        <BLANKLINE>
+        >>> p = Path('/a/'); p.updir(); p.slash_begin, p.segmt, p.slash_end; print(p)
+        True
+        (True, [], False)
+        /
+        >>> p = Path('a/b'); p.updir(); p.slash_begin, p.segmt, p.slash_end; print(p)
+        True
+        (False, [], False)
+        <BLANKLINE>
+        >>> p = Path('a/b/c'); p.updir(); p.slash_begin, p.segmt, p.slash_end; print(p)
+        True
+        (False, ['a'], True)
+        a/
+        >>> p = Path('/a/b/c'); p.updir(); p.slash_begin, p.segmt, p.slash_end; print(p)
+        True
+        (True, ['a'], True)
+        /a/
+        >>> p = Path('/a/../b/c'); p.updir(); p.slash_begin, p.segmt, p.slash_end; print(p)
+        True
+        (True, [], False)
+        /
+        >>> p = Path('/a/../d/b/c'); p.updir(); p.slash_begin, p.segmt, p.slash_end; print(p)
+        True
+        (True, ['d'], True)
+        /d/
+        '''
+        self.normalize()
+        if self.segmt:
+            if not self.slash_end:
+                # A file
+                self.segmt.pop()
+            if self.segmt:
+                self.segmt.pop()
+                if self.segmt:
+                    self.slash_end = True
+                else:
+                    self.slash_end = False
+            return True
+        return False
+
+    def __str__(self):
+        '''
+        >>> p = Path('a/..//.//b/'); print(p)
+        a/.././b/
+        >>> p = Path('/a/..//.//b/'); print(p)
+        /a/.././b/
+        >>> p = Path('/a/b/c'); print(p)
+        /a/b/c
+        '''
+        l = []
+        s = self.segmt
+        sz = len(s)
+        if s:
+            if self.slash_begin:
+                l.append(self.sep)
+            for (i, x) in enumerate(s):
+                l.append(x)
+                if i + 1 < sz:
+                    l.append(self.sep)
+            if self.slash_end:
+                l.append(self.sep)
+        else:
+            if self.slash_begin or self.slash_end:
+                l.append(self.sep)
+        return ''.join(l)
+
+
 def normalize(url):
+    '''Lowercases the authority part (netloc),
+    Normalizes the path part (removing .. and .)
+    '''
     x = urllib.parse.urlsplit(url)
-    return urllib.parse.urlunparse((x[0], x[1].lower(), os.path.normpath(x[2]), '', x[3], x[4]))
+    path = Path(x[2])
+    path.normalize()
+    norm = urllib.parse.urlunparse((x[0], x[1].lower(), str(path), '', x[3], x[4]))
+    return norm
+
+
 
 def humansize(nbytes):
     if nbytes:
@@ -203,7 +405,8 @@ def xmkdir(d):
 def parse_cookie_file(content):
     """returns a dict of tuples of domain => cookie => value"""
     host_cookies = dict()
-    for line in content.decode().split(os.linesep):
+    #for line in content.decode().split(os.linesep):
+    for line in content.split(os.linesep):
         line = line.rstrip()
         if not re.match("^#", line) and line:
             try:
@@ -234,7 +437,7 @@ class Crawler(object):
 
     linkregex = re.compile('<a\s(?:.*?\s)*?href=[\'"](.*?)[\'"].*?>', re.IGNORECASE)
     def __init__(self, urls, **kvargs):
-        self.tocrawl = set(urls)
+        self.tocrawl = set(map(normalize,urls))
         self.crawled = set([])
 
         self.urlre = re.compile(kvargs['regex']) if kvargs.get('regex') else None
@@ -296,8 +499,7 @@ class Crawler(object):
     @staticmethod
     def get_links(parsed_url, content):
         res = []
-        links = Crawler.linkregex.findall(content)
-        for link in (links.pop(0) for _ in range(len(links))):
+        for link in Crawler.linkregex.findall(content):
             if link.startswith('/'):
                 link = parsed_url.scheme + '://' + parsed_url.netloc + link
                 res.append(link)
@@ -313,15 +515,17 @@ class Crawler(object):
                 pass
         return res
 
-    def process_links(self, links):
+    def recurse_links(self, links):
+        '''Put links which are not crawled and match the url regexp in the tocrawl queue'''
+        print('recurse_links:',links)
         for link in links:
-            link = normalize(link)
+            print(link)
             if link not in self.crawled:
                 #if self.verbose:
                 #    print('Check {0}'.format(link))
                 if self.urlre and self.urlre.match(link):
                     print('Recursing link {0}'.format(link))
-                    self.tocrawl.add(normalize(link))
+                    self.tocrawl.add(link)
                 else:
                     if self.verbose:
                         print('Not recursing link {0}'.format(link))
@@ -376,17 +580,22 @@ class Crawler(object):
                 continue
 
             headers = dict(response.getheaders())
+
+            # If the content is HTML we get the links and recurse
             if re.match('^text/html', headers['Content-Type']):
+
+                # taking care of encoding
                 encoding = 'utf-8'
                 m = re.match('charset=(\w+)', headers['Content-Type'])
                 if m:
                     encoding = m.group(0)
 
                 content = response.read()
-                self.crawled.add(normalize(current_url))
+                self.crawled.add(current_url)
                 try:
-                    links = Crawler.get_links(parsed_url, content.decode(encoding))
-                    self.process_links(links)
+                    ###########
+                    self.recurse_links(normalize(link) for link in Crawler.get_links(parsed_url, content.decode(encoding)))
+                    ###########
 
                 except UnicodeDecodeError as e:
                     logging.error('Failed decoding "{0}" with charset "{1}": {2}'.format(current_url, encoding, str(e)))
@@ -395,8 +604,9 @@ class Crawler(object):
                 Crawler.save_local(current_url, io.BytesIO(content), parsed_url, self.verbose)
 
             else:
+                self.crawled.add(current_url)
                 Crawler.save_local(current_url, response, parsed_url, self.verbose)
-                self.crawled.add(normalize(current_url))
+
 def main():
     try:
         opts, args = getopt.getopt(sys.argv[1:], "vhr:c:", ["help", "regex=", "cookiefile=", 'verbose'])

@@ -30,6 +30,15 @@ class parse_cookie_fileTest(unittest.TestCase):
     def test(self):
         self.assertEqual(pwget.parse_cookie_file(".youtube.com\tTRUE\t/\tFALSE\t1687629793\tPREF\tfv=11.2.202&al=en&f1=50000000"), {'.youtube.com': {'PREF': 'fv=11.2.202&al=en&f1=50000000'}})
 
+class NormalizeTest(unittest.TestCase):
+    def test(self):
+        self.assertEqual(pwget.normalize('http://host/a/b/..'), 'http://host/a/')
+        self.assertEqual(pwget.normalize('http://host/a/..'), 'http://host/')
+        self.assertEqual(pwget.normalize('http://host'), 'http://host')
+        self.assertEqual(pwget.normalize('http://host/'), 'http://host/')
+
+
+
 if __name__ == '__main__':
     unittest.main()
 
