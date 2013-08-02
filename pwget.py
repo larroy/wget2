@@ -18,6 +18,7 @@ import os
 import datetime
 import http
 import time
+import collections
 #import pdb
 
 
@@ -436,6 +437,12 @@ def remove_first_dot(netloc):
         return netloc[1:]
     return netloc
 
+
+class Tree(collections.defaultdict):
+    def __init__(self, count = 0):
+        super(Tree, self).__init__(Tree)
+        self.count = count
+
 class Crawler(object):
     ROOTFILENAME = '_root_'
 
@@ -443,6 +450,7 @@ class Crawler(object):
     def __init__(self, urls, **kvargs):
         self.tocrawl = set(map(normalize,urls))
         self.crawled = set([])
+        self.stats = Tree()
 
         self.urlre = re.compile(kvargs['regex']) if kvargs.get('regex') else None
 
@@ -558,6 +566,25 @@ class Crawler(object):
                         print('Using cookie "{0}: {1}" for host {2}'.format(k, v, url_host))
                     url_opener.add_header('Cookie', '{0}={1}'.format(k,v))
 
+    def print_stats(self):
+        def rp(x):
+            ret = []
+            if isinstance(x, Tree):
+                if x.count:
+                    ret.append('count: {0}'.format(x.count))
+                #pdb.set_trace()
+                for (k,v) in x.items():
+                    ret.append('\n')
+                    ret.append('{0}: {1}'.format(k, rp(v)))
+            else:
+                ret.append(str(x))
+            return ''.join(ret)
+
+        if 'errors' in self.stats.keys():
+            print('Errors: ')
+            for (k,v) in self.stats['errors'].items():
+                print(k, rp(v))
+
 
     def __call__(self):
         while True:
@@ -568,7 +595,8 @@ class Crawler(object):
 
             except KeyError:
                 print('All finished.\n')
-                return
+                self.print_stats()
+                break
 
             parsed_url = urllib.parse.urlparse(current_url)
             try:
@@ -582,10 +610,14 @@ class Crawler(object):
                 print()
 
             except KeyboardInterrupt:
-                raise
+                  self.print_stats()
+                  raise
             except urllib.error.HTTPError as e:
                 logging.error('urlopen failed: {0}, {1}'.format(current_url, e))
-
+                self.stats['errors'][e.code].count += 1
+                urls = self.stats['errors'][e.code].get('urls', list())
+                urls.append(current_url)
+                self.stats['errors'][e.code]['urls'] = urls
                 continue
 
             headers = dict(response.getheaders())
