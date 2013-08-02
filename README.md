@@ -5,6 +5,7 @@ A wget replacement written in Python3
 
 Recursively downloads from http urls matching a regexp:
 
+<pre>
 ./pwget.py [-r url_regex] url1 [url2] ... [urln]
 
 Options:
@@ -15,6 +16,7 @@ Options:
     -o --overwrite:     force overwritting of files
     -m --mirror:        only download if size differs
     -t --time:          time to sleep between requests in seconds (float)
+</pre>
 
 
 
