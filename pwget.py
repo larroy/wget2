@@ -480,14 +480,14 @@ class Crawler(object):
         start = None
 
         if not self.overwrite and not self.mirror and os.path.exists(new_localpath):
-            logging.warn('{0} exists, won\'t overwrite (use --mirror or --overwrite to change this)'.format(new_localpath))
+            print('{0}: file exists, won\'t overwrite (use --mirror or --overwrite to change this)'.format(new_localpath))
             return
 
         if length:
             length = int(length)
             if self.mirror and os.path.exists(new_localpath)\
                 and os.stat(new_localpath).st_size == length:
-                logging.warn('{0}: remote and local have the same size'.format(new_localpath))
+                print('{0}: remote and local have the same size'.format(new_localpath))
                 return
 
             pb = ProgressBar(0, length)
@@ -690,7 +690,10 @@ def main():
 
     crawler = Crawler(args, **options)
     crawler()
-    return 0
+    if 'errors' in crawler.stats.keys():
+        return 1
+    else:
+        return 0
 
 if __name__ == '__main__':
     sys.exit(main())
