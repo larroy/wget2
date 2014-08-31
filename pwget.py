@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.2
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # Copyright (C) 2012, Pedro Larroy Tovar
 """A wget replacement in Python, downloads urls recursively matching a regexp"""
@@ -460,7 +460,7 @@ class Crawler(object):
         self.host_cookies = None
         if self.cookiefile:
             if os.path.isfile(self.cookiefile):
-                self.host_cookies = parse_cookie_file(open(self.cookiefile, "rb").read())
+                self.host_cookies = parse_cookie_file(open(self.cookiefile, "rb").read().decode())
             else:
                 raise RuntimeError("Crawler error: cookie file {0} not found", self.cookiefile)
 
