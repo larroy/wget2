@@ -449,6 +449,8 @@ class Crawler(object):
 
     linkregex = re.compile('<a\s(?:.*?\s)*?href=[\'"](.*?)[\'"].*?>', re.IGNORECASE)
     def __init__(self, urls, **kvargs):
+        self.seed_urls = urls
+        self.seed_urls_netloc = set(map(lambda x: urllib.parse.urlparse(x).netloc, urls))
         self.tocrawl = set(map(normalize,urls))
         self.crawled = set([])
         self.stats = Tree()
@@ -544,7 +546,7 @@ class Crawler(object):
         return res
 
     def recurse_links(self, links):
-        '''Put links which are not crawled and match the url regexp in the tocrawl queue'''
+        """Put links which are not crawled and match the url regexp in the to-crawl queue"""
         for link in links:
             #print(link)
             if link not in self.crawled:
@@ -553,6 +555,11 @@ class Crawler(object):
                 if self.urlre and self.urlre.match(link):
                     print('Recursing link {0}'.format(link))
                     self.tocrawl.add(link)
+                elif self.mirror:
+                    parsed_url = urllib.parse.urlparse(link)
+                    if parsed_url.netloc in self.seed_urls_netloc:
+                        print('Recursing link {0}'.format(link))
+                        self.tocrawl.add(link)
                 else:
                     if self.verbose:
                         print('Not recursing link {0}'.format(link))
