@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Copyright (C) 2012, Pedro Larroy Tovar
+# Copyright (C) 2019, Pedro Larroy Tovar
 """A wget replacement in Python, downloads urls recursively matching a regexp"""
 
 
 __author__ = 'Pedro Larroy'
-__version__ = '0.3'
+__version__ = '0.4'
 
 import sys
 import re
@@ -19,8 +19,9 @@ import datetime
 import http
 import time
 import collections
-#import pdb
+from bs4 import BeautifulSoup
 
+#import pdb
 
 def usage():
     print('Recursively downloads from http urls matching a regexp:\n')
@@ -515,10 +516,18 @@ class Crawler(object):
 
                     return
 
+
+
     @staticmethod
     def get_links(parsed_url, content):
         res = []
-        for link in Crawler.linkregex.findall(content):
+        pathdir = os.path.split(parsed_url.path)[0]
+        links = Crawler.linkregex.findall(content)
+        soup = BeautifulSoup(content, features="html.parser")
+        iframes = soup.find_all('iframe')
+        for x in iframes:
+            links.append(x.attrs['src'])
+        for link in links:
             if link.startswith('/'):
                 link = parsed_url.scheme + '://' + parsed_url.netloc + link
                 res.append(link)
@@ -528,7 +537,7 @@ class Crawler(object):
             elif link.startswith('http://'):
                 res.append(link)
             elif not re.match('^\w+://', link):
-                link = parsed_url.scheme + '://' + parsed_url.netloc + parsed_url.path + link
+                link = parsed_url.scheme + '://' + parsed_url.netloc + os.path.join(pathdir,link)
                 res.append(link)
             else:
                 pass
